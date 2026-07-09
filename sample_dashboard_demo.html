@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>주식 스크리닝 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --border: #2a2e3a; --text: #e6e8ef;
+    --muted: #9aa1b2; --accent: #4f8cff; --good: #34c38f; --bad: #f0616d;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  header { padding: 24px 32px; border-bottom: 1px solid var(--border); }
+  header h1 { margin:0 0 4px; font-size: 22px; }
+  header p { margin:0; color: var(--muted); font-size: 13px; }
+  .banner { background:#3a2f12; color:#f4c95d; padding:10px 32px; font-size:13px; border-bottom:1px solid var(--border); }
+  .container { padding: 24px 32px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap: wrap; }
+  .tab-btn { background: var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px; }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color:#fff; }
+  .card { background: var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns: 2fr 1fr; gap:20px; align-items:start; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align:left; }
+  th { color: var(--muted); font-weight:600; cursor:pointer; user-select:none; position: sticky; top:0; background: var(--panel); }
+  th:hover { color: var(--text); }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  .pos { color: var(--good); } .neg { color: var(--bad); }
+  .score-bar { display:inline-block; height:6px; background: var(--accent); border-radius:3px; vertical-align:middle; margin-right:6px; }
+  .filters { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  select, input[type=text] { background:#11141c; border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; }
+  .table-wrap { max-height: 640px; overflow:auto; }
+  .theme-item { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+  .disclaimer { color: var(--muted); font-size:12px; line-height:1.6; margin-top: 30px; padding-top:16px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 국내·해외 주식 스크리닝 대시보드</h1>
+  <p>생성 시각: 2026-07-09 09:17:58 · 데이터 기준: 무료 API 지연 시세 (실시간 아님) · 총 35종목 분석</p>
+</header>
+<div class="banner">⚠️ 데이터 수집에 실패하여 샘플(데모) 데이터로 표시 중입니다. 인터넷 연결과 패키지 설치 상태를 확인한 뒤 다시 실행해주세요.</div>
+<div class="container">
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="filters">
+        <select id="sectorFilter"><option value="">전체 업종/테마</option></select>
+        <input type="text" id="searchBox" placeholder="종목명 또는 코드 검색">
+      </div>
+      <div class="table-wrap">
+        <table id="stockTable">
+          <thead>
+            <tr>
+              <th data-key="name">종목</th>
+              <th data-key="ticker">코드</th>
+              <th data-key="sector">업종/테마</th>
+              <th data-key="price">현재가</th>
+              <th data-key="change_pct">등락률</th>
+              <th data-key="per">PER</th>
+              <th data-key="pbr">PBR</th>
+              <th data-key="rel_volume">상대거래량</th>
+              <th data-key="valuation_score">밸류점수</th>
+              <th data-key="momentum_score">모멘텀점수</th>
+              <th data-key="combined_score">종합점수</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3 style="margin-top:0;">종합점수 Top 10</h3>
+        <canvas id="topChart" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">업종/테마별 평균 점수 Top 8</h3>
+        <div id="themeList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    ⚠️ 본 대시보드는 PER·PBR 등 공개 지표를 기준으로 한 정량 스크리닝 결과이며, 투자 추천이나 매수·매도 자문이 아닙니다.
+    지표가 좋다고 해서 반드시 좋은 투자처는 아니며, 실제 투자 결정 전 반드시 최신 공시와 재무제표를 직접 확인하시기 바랍니다.
+    시세는 실시간이 아닌 지연 시세이며, 스크립트를 재실행해야 데이터가 갱신됩니다.
+  </div>
+</div>
+
+<script>
+const DATA = {"KOSDAQ": [{"market": "KOSDAQ", "ticker": "091990", "name": "셀트리온헬스케어", "sector": "바이오", "price": 474005.0, "change_pct": -6.63, "volume": 2481353, "rel_volume": 0.61, "per": 46.7, "pbr": 4.01, "marketcap": 274946816388122, "valuation_score": 76.2, "momentum_score": 92.9, "combined_score": 84.5}, {"market": "KOSDAQ", "ticker": "247540", "name": "에코프로비엠", "sector": "2차전지", "price": 156238.0, "change_pct": 2.22, "volume": 3083954, "rel_volume": 0.87, "per": 33.7, "pbr": 4.43, "marketcap": 385890874358, "valuation_score": 70.2, "momentum_score": 57.1, "combined_score": 63.7}, {"market": "KOSDAQ", "ticker": "293490", "name": "카카오게임즈", "sector": "게임", "price": 328440.0, "change_pct": -0.99, "volume": 2636121, "rel_volume": 0.78, "per": 22.3, "pbr": 2.15, "marketcap": 110186670487334, "valuation_score": 38.1, "momentum_score": 78.6, "combined_score": 58.3}, {"market": "KOSDAQ", "ticker": "086520", "name": "에코프로", "sector": "2차전지", "price": 168836.0, "change_pct": -7.69, "volume": 4652583, "rel_volume": 3.12, "per": 20.5, "pbr": NaN, "marketcap": 439016998642099, "valuation_score": 39.3, "momentum_score": 64.3, "combined_score": 51.8}, {"market": "KOSDAQ", "ticker": "263750", "name": "펄어비스", "sector": "게임", "price": 139878.0, "change_pct": 5.96, "volume": 2173375, "rel_volume": 1.06, "per": 44.6, "pbr": 2.77, "marketcap": 497575163394781, "valuation_score": 60.7, "momentum_score": 42.9, "combined_score": 51.8}, {"market": "KOSDAQ", "ticker": "196170", "name": "알테오젠", "sector": "바이오", "price": 44787.0, "change_pct": 2.1, "volume": 1221814, "rel_volume": 3.21, "per": 7.0, "pbr": 5.48, "marketcap": 107196980004482, "valuation_score": 57.1, "momentum_score": 35.7, "combined_score": 46.4}, {"market": "KOSDAQ", "ticker": "112040", "name": "위메이드", "sector": "게임", "price": 74833.0, "change_pct": 6.97, "volume": 2898111, "rel_volume": 1.87, "per": 49.0, "pbr": 1.14, "marketcap": 215582486084948, "valuation_score": 58.3, "momentum_score": 28.6, "combined_score": 43.5}], "KOSPI": [{"market": "KOSPI", "ticker": "005930", "name": "삼성전자", "sector": "반도체", "price": 323319.0, "change_pct": -7.6, "volume": 1447643, "rel_volume": 1.09, "per": 41.6, "pbr": 1.06, "marketcap": 211018717660666, "valuation_score": 49.7, "momentum_score": 92.3, "combined_score": 71.0}, {"market": "KOSPI", "ticker": "000660", "name": "SK하이닉스", "sector": "반도체", "price": 24601.0, "change_pct": -4.5, "volume": 2576240, "rel_volume": 0.48, "per": 40.0, "pbr": 2.08, "marketcap": 294673915369566, "valuation_score": 49.4, "momentum_score": 84.6, "combined_score": 67.0}, {"market": "KOSPI", "ticker": "035420", "name": "NAVER", "sector": "인터넷", "price": 406621.0, "change_pct": -7.9, "volume": 4048514, "rel_volume": 2.56, "per": 11.9, "pbr": 2.96, "marketcap": 46463647105735, "valuation_score": 39.4, "momentum_score": 76.9, "combined_score": 58.2}, {"market": "KOSPI", "ticker": "006400", "name": "삼성SDI", "sector": "2차전지", "price": 124068.0, "change_pct": -6.38, "volume": 1462070, "rel_volume": 2.37, "per": 24.1, "pbr": 2.43, "marketcap": 468333628397475, "valuation_score": 38.1, "momentum_score": 76.9, "combined_score": 57.5}, {"market": "KOSPI", "ticker": "000270", "name": "기아", "sector": "자동차", "price": 33087.0, "change_pct": -6.25, "volume": 3174485, "rel_volume": 2.86, "per": 6.6, "pbr": 7.97, "marketcap": 264604261115058, "valuation_score": 58.3, "momentum_score": 53.8, "combined_score": 56.1}, {"market": "KOSPI", "ticker": "055550", "name": "신한지주", "sector": "금융", "price": 223035.0, "change_pct": -0.74, "volume": 4773698, "rel_volume": 3.12, "per": 31.5, "pbr": 7.34, "marketcap": 435272233061399, "valuation_score": 75.3, "momentum_score": 34.6, "combined_score": 55.0}, {"market": "KOSPI", "ticker": "105560", "name": "KB금융", "sector": "금융", "price": 485828.0, "change_pct": 5.77, "volume": 156257, "rel_volume": 2.63, "per": 33.6, "pbr": 5.27, "marketcap": 55864931580578, "valuation_score": 77.7, "momentum_score": 30.8, "combined_score": 54.2}, {"market": "KOSPI", "ticker": "373220", "name": "LG에너지솔루션", "sector": "2차전지", "price": 327537.0, "change_pct": 1.75, "volume": 938579, "rel_volume": 2.66, "per": 24.6, "pbr": 5.26, "marketcap": 278519176912945, "valuation_score": 63.5, "momentum_score": 42.3, "combined_score": 52.9}, {"market": "KOSPI", "ticker": "207940", "name": "삼성바이오로직스", "sector": "바이오", "price": 345461.0, "change_pct": 5.49, "volume": 3902399, "rel_volume": 1.11, "per": NaN, "pbr": 2.43, "marketcap": 105570323508804, "valuation_score": 42.3, "momentum_score": 57.7, "combined_score": 50.0}, {"market": "KOSPI", "ticker": "068270", "name": "셀트리온", "sector": "바이오", "price": 472026.0, "change_pct": 6.02, "volume": 1641921, "rel_volume": 2.43, "per": 55.1, "pbr": 2.41, "marketcap": 123389091096222, "valuation_score": 61.5, "momentum_score": 34.6, "combined_score": 48.1}, {"market": "KOSPI", "ticker": "035720", "name": "카카오", "sector": "인터넷", "price": 57391.0, "change_pct": 5.56, "volume": 3058257, "rel_volume": 2.9, "per": 33.6, "pbr": 3.28, "marketcap": 276065111573486, "valuation_score": 66.2, "momentum_score": 23.1, "combined_score": 44.6}, {"market": "KOSPI", "ticker": "005380", "name": "현대차", "sector": "자동차", "price": 285070.0, "change_pct": -3.8, "volume": 2964471, "rel_volume": 3.18, "per": 15.5, "pbr": 4.27, "marketcap": 45545615145679, "valuation_score": 51.3, "momentum_score": 34.6, "combined_score": 42.9}, {"market": "KOSPI", "ticker": "051910", "name": "LG화학", "sector": "2차전지", "price": 416408.0, "change_pct": 1.9, "volume": 4322363, "rel_volume": 2.19, "per": 5.6, "pbr": 2.6, "marketcap": 39988009264121, "valuation_score": 27.2, "momentum_score": 57.7, "combined_score": 42.5}], "US": [{"market": "US", "ticker": "COIN", "name": "Coinbase Global", "sector": "Financials", "price": 419.0, "change_pct": 1.32, "volume": 825659, "rel_volume": 0.8, "per": 54.2, "pbr": 6.94, "marketcap": 449472425799584, "valuation_score": 89.3, "momentum_score": 66.7, "combined_score": 78.0}, {"market": "US", "ticker": "AMD", "name": "Advanced Micro Devices", "sector": "Technology", "price": 373.0, "change_pct": 0.83, "volume": 2195665, "rel_volume": 0.43, "per": NaN, "pbr": 7.27, "marketcap": 272840585573840, "valuation_score": 75.0, "momentum_score": 80.0, "combined_score": 77.5}, {"market": "US", "ticker": "JPM", "name": "JPMorgan Chase", "sector": "Financials", "price": 296.0, "change_pct": 0.36, "volume": 4680060, "rel_volume": 1.03, "per": 16.6, "pbr": 5.5, "marketcap": 150068540191401, "valuation_score": 60.7, "momentum_score": 73.3, "combined_score": 67.0}, {"market": "US", "ticker": "GOOGL", "name": "Alphabet Inc.", "sector": "Communication", "price": 115.0, "change_pct": -1.58, "volume": 387313, "rel_volume": 1.57, "per": 18.1, "pbr": 3.86, "marketcap": 211561442246482, "valuation_score": 57.1, "momentum_score": 76.7, "combined_score": 66.9}, {"market": "US", "ticker": "MSFT", "name": "Microsoft Corp.", "sector": "Technology", "price": 132.0, "change_pct": -4.96, "volume": 2298206, "rel_volume": 1.71, "per": 17.2, "pbr": 3.77, "marketcap": 430688417470439, "valuation_score": 50.0, "momentum_score": 75.0, "combined_score": 62.5}, {"market": "US", "ticker": "TSLA", "name": "Tesla Inc.", "sector": "Consumer Discretionary", "price": 302.0, "change_pct": 2.8, "volume": 1252499, "rel_volume": 0.77, "per": 17.0, "pbr": 5.11, "marketcap": 209670535176402, "valuation_score": 57.1, "momentum_score": 63.3, "combined_score": 60.2}, {"market": "US", "ticker": "LLY", "name": "Eli Lilly", "sector": "Healthcare", "price": 165.0, "change_pct": 4.03, "volume": 455461, "rel_volume": 1.82, "per": 59.8, "pbr": NaN, "marketcap": 106655840702293, "valuation_score": 75.0, "momentum_score": 40.0, "combined_score": 57.5}, {"market": "US", "ticker": "NVDA", "name": "NVIDIA Corp.", "sector": "Technology", "price": 280.0, "change_pct": -7.19, "volume": 4996484, "rel_volume": 2.99, "per": 55.8, "pbr": 1.66, "marketcap": 242871998612814, "valuation_score": 57.1, "momentum_score": 56.7, "combined_score": 56.9}, {"market": "US", "ticker": "META", "name": "Meta Platforms", "sector": "Communication", "price": 377.0, "change_pct": -7.09, "volume": 2962470, "rel_volume": 1.96, "per": 12.0, "pbr": 1.01, "marketcap": 92993897994263, "valuation_score": 16.1, "momentum_score": 70.0, "combined_score": 43.0}, {"market": "US", "ticker": "PLTR", "name": "Palantir Technologies", "sector": "Technology", "price": 454.0, "change_pct": 5.54, "volume": 552262, "rel_volume": 1.71, "per": 3.2, "pbr": 5.24, "marketcap": 131051435690930, "valuation_score": 39.3, "momentum_score": 41.7, "combined_score": 40.5}, {"market": "US", "ticker": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Discretionary", "price": 479.0, "change_pct": 7.93, "volume": 2823264, "rel_volume": 2.63, "per": 19.9, "pbr": 4.8, "marketcap": 271143381166999, "valuation_score": 64.3, "momentum_score": 16.7, "combined_score": 40.5}, {"market": "US", "ticker": "V", "name": "Visa Inc.", "sector": "Financials", "price": 62.0, "change_pct": 0.85, "volume": 1434506, "rel_volume": 2.27, "per": 14.6, "pbr": 2.41, "marketcap": 244317072889473, "valuation_score": 32.1, "momentum_score": 46.7, "combined_score": 39.4}, {"market": "US", "ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology", "price": 218.0, "change_pct": -0.53, "volume": 3672471, "rel_volume": 2.49, "per": 8.6, "pbr": 2.98, "marketcap": 430850100922760, "valuation_score": 25.0, "momentum_score": 53.3, "combined_score": 39.2}, {"market": "US", "ticker": "AVGO", "name": "Broadcom Inc.", "sector": "Technology", "price": 494.0, "change_pct": 2.46, "volume": 138333, "rel_volume": 2.93, "per": 40.8, "pbr": 1.42, "marketcap": 57802792342509, "valuation_score": 46.4, "momentum_score": 30.0, "combined_score": 38.2}, {"market": "US", "ticker": "XOM", "name": "Exxon Mobil", "sector": "Energy", "price": 140.0, "change_pct": 6.93, "volume": 4416234, "rel_volume": 3.13, "per": 12.0, "pbr": 5.75, "marketcap": 305877715086402, "valuation_score": 55.4, "momentum_score": 10.0, "combined_score": 32.7}]};
+let currentMarket = Object.keys(DATA)[0];
+let sortKey = "combined_score";
+let sortAsc = false;
+let chart = null;
+
+function fmt(v, digits=2) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "-";
+  return Number(v).toLocaleString("ko-KR", {maximumFractionDigits: digits});
+}
+
+function renderTabs() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  Object.keys(DATA).forEach(market => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn" + (market === currentMarket ? " active" : "");
+    btn.textContent = market + " (" + DATA[market].length + ")";
+    btn.onclick = () => { currentMarket = market; renderTabs(); populateSectorFilter(); renderAll(); };
+    tabs.appendChild(btn);
+  });
+}
+
+function populateSectorFilter() {
+  const sel = document.getElementById("sectorFilter");
+  const sectors = [...new Set(DATA[currentMarket].map(r => r.sector))].sort();
+  sel.innerHTML = '<option value="">전체 업종/테마</option>' + sectors.map(s => `<option value="${s}">${s}</option>`).join("");
+}
+
+function getFiltered() {
+  let rows = DATA[currentMarket];
+  const sector = document.getElementById("sectorFilter").value;
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  if (sector) rows = rows.filter(r => r.sector === sector);
+  if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || r.ticker.toLowerCase().includes(q));
+  rows = [...rows].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
+  return rows;
+}
+
+function renderTable() {
+  const rows = getFiltered();
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${r.ticker}</td>
+      <td>${r.sector}</td>
+      <td>${fmt(r.price, 0)}</td>
+      <td class="${r.change_pct >= 0 ? 'pos' : 'neg'}">${r.change_pct >= 0 ? '+' : ''}${fmt(r.change_pct)}%</td>
+      <td>${fmt(r.per)}</td>
+      <td>${fmt(r.pbr)}</td>
+      <td>${fmt(r.rel_volume)}x</td>
+      <td>${fmt(r.valuation_score, 0)}</td>
+      <td>${fmt(r.momentum_score, 0)}</td>
+      <td><b>${fmt(r.combined_score, 0)}</b></td>
+    </tr>
+  `).join("");
+}
+
+function renderChart() {
+  const top = [...DATA[currentMarket]].sort((a,b) => b.combined_score - a.combined_score).slice(0, 10);
+  const ctx = document.getElementById("topChart");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: top.map(r => r.name),
+      datasets: [{ label: "종합점수", data: top.map(r => r.combined_score), backgroundColor: "#4f8cff" }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { max: 100, ticks: { color: "#9aa1b2" }, grid: { color: "#2a2e3a" } },
+        y: { ticks: { color: "#e6e8ef" }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderThemes() {
+  const rows = DATA[currentMarket];
+  const bySector = {};
+  rows.forEach(r => {
+    if (!bySector[r.sector]) bySector[r.sector] = [];
+    bySector[r.sector].push(r.combined_score);
+  });
+  const avgs = Object.entries(bySector)
+    .map(([sector, scores]) => ({ sector, avg: scores.reduce((a,b)=>a+b,0)/scores.length, n: scores.length }))
+    .sort((a,b) => b.avg - a.avg)
+    .slice(0, 8);
+  document.getElementById("themeList").innerHTML = avgs.map(t => `
+    <div class="theme-item"><span>${t.sector} <span style="color:var(--muted)">(${t.n})</span></span><span><b>${t.avg.toFixed(1)}</b></span></div>
+  `).join("");
+}
+
+function renderAll() {
+  renderTable();
+  renderChart();
+  renderThemes();
+}
+
+document.querySelectorAll("#stockTable th").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = false; }
+    renderTable();
+  });
+});
+document.getElementById("sectorFilter").addEventListener("change", renderAll);
+document.getElementById("searchBox").addEventListener("input", renderTable);
+
+renderTabs();
+populateSectorFilter();
+renderAll();
+</script>
+</body>
+</html>
