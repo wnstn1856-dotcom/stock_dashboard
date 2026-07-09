@@ -5,7 +5,9 @@
 - indicators: RSI, MACD
 - news: yfinance 뉴스 헤드라인 기반 호재/악재 참고 지표
 """
+import datetime
 import logging
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -13,6 +15,22 @@ import indicators
 import news as news_mod
 
 logger = logging.getLogger(__name__)
+
+
+def _us_trading_progress():
+    """
+    지금이 미국 정규장 중(09:30~16:00 ET)이면 경과 비율(0~1)을 반환.
+    장 마감 후/장 시작 전이면 1.0(보정 불필요). 장 시작 직후 노이즈 완화를 위해 최소 0.15로 clamp.
+    (공휴일/조기폐장 등은 반영하지 않은 단순 근사치)
+    """
+    now = datetime.datetime.now(ZoneInfo("America/New_York"))
+    open_t = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    close_t = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    if now.weekday() >= 5 or now <= open_t or now >= close_t:
+        return 1.0
+    elapsed = (now - open_t).total_seconds()
+    total = (close_t - open_t).total_seconds()
+    return min(max(elapsed / total, 0.15), 1.0)
 
 
 def _get_sp500_tickers(limit):
@@ -49,6 +67,13 @@ def fetch_us_stocks(
     tickers = _get_sp500_tickers(universe_size) or fallback_tickers
     n_total = len(tickers)
 
+    trading_progress = _us_trading_progress()
+    if trading_progress < 1.0:
+        logger.info(
+            "미국 장중 감지 (경과 약 %.0f%%) - 상대거래량을 예상 하루 거래량 기준으로 보정합니다.",
+            trading_progress * 100,
+        )
+
     rows = []
     for i, symbol in enumerate(tickers, start=1):
         if i % 25 == 0:
@@ -67,7 +92,8 @@ def fetch_us_stocks(
             )
             volume = info.get("volume") or info.get("regularMarketVolume")
             avg_volume = info.get("averageVolume")
-            rel_volume = (volume / avg_volume) if volume and avg_volume else None
+            volume_adjusted = (volume / trading_progress) if volume else None
+            rel_volume = (volume_adjusted / avg_volume) if volume_adjusted and avg_volume else None
 
             close = hist["Close"] if hist is not None and not hist.empty else None
             rsi = indicators.rsi(close, period=rsi_period)

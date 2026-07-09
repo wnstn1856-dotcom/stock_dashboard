@@ -23,7 +23,7 @@ def _percentile_score(series, ascending_is_good=True):
     if valid.empty:
         return pd.Series(50.0, index=series.index)
 
-    ranks = valid.rank(pct=True, ascending=ascending_is_good)
+    ranks = valid.rank(pct=True, ascending=not ascending_is_good)
     scores = ranks * 100
     return scores.reindex(series.index).fillna(50.0)
 
@@ -36,6 +36,10 @@ def compute_scores(df, weight_valuation=0.5, weight_momentum=0.5):
     total_w = weight_valuation + weight_momentum
     w_val = weight_valuation / total_w
     w_mom = weight_momentum / total_w
+
+    df = df.copy()
+    df["per"] = pd.to_numeric(df["per"], errors="coerce")
+    df["pbr"] = pd.to_numeric(df["pbr"], errors="coerce")
 
     out_frames = []
     for market, g in df.groupby("market"):
@@ -69,6 +73,10 @@ def add_sector_benchmarks(df):
     -> '이 종목 PER이 업종 평균보다 싼가?'를 바로 비교할 수 있게 함.
     """
     df = df.copy()
+    # per/pbr가 object dtype으로 들어오는 경우(결측치 처리 방식에 따라 발생 가능)를 대비해 숫자로 강제 변환
+    df["per"] = pd.to_numeric(df["per"], errors="coerce")
+    df["pbr"] = pd.to_numeric(df["pbr"], errors="coerce")
+
     per_valid = df["per"].where(df["per"] > 0)
     pbr_valid = df["pbr"].where(df["pbr"] > 0)
 

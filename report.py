@@ -64,6 +64,7 @@ TEMPLATE = """<!DOCTYPE html>
 <header>
   <h1>📊 국내·해외 주식 스크리닝 대시보드</h1>
   <p>생성 시각: {{GENERATED_AT}} · 데이터 기준: 무료 API 지연 시세 (실시간 아님, 재실행 시에만 갱신) · 총 {{TOTAL_COUNT}}종목 분석</p>
+  <p style="margin-top:4px; color:#9aa1b2; font-size:12px;">※ 장중에 생성된 경우 "상대거래량"은 그 시점까지의 거래량을 하루 기준으로 환산한 예상치입니다. 장 마감 후 재실행하면 확정치로 바뀝니다.</p>
 </header>
 {{BANNER}}
 <div class="container">

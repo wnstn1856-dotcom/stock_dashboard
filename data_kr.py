@@ -8,6 +8,7 @@
 """
 import datetime
 import logging
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -15,6 +16,24 @@ import indicators
 import news as news_mod
 
 logger = logging.getLogger(__name__)
+
+
+def _kr_trading_progress(target_date_str):
+    """
+    target_date_str('YYYYMMDD')가 '오늘'이고 아직 장중(09:00~15:30 KST)이면
+    경과 비율(0~1)을 반환한다. 장 마감 후나 과거 날짜 데이터면 1.0(보정 불필요)을 반환.
+    장 시작 직후 노이즈를 줄이기 위해 최소 0.15로 clamp.
+    """
+    now = datetime.datetime.now(ZoneInfo("Asia/Seoul"))
+    if target_date_str != now.strftime("%Y%m%d"):
+        return 1.0
+    open_t = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    close_t = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now <= open_t or now >= close_t:
+        return 1.0
+    elapsed = (now - open_t).total_seconds()
+    total = (close_t - open_t).total_seconds()
+    return min(max(elapsed / total, 0.15), 1.0)
 
 
 def _latest_business_day():
@@ -109,6 +128,15 @@ def fetch_kr_stocks(
         datetime.datetime.strptime(date, "%Y%m%d") - datetime.timedelta(days=history_days)
     ).strftime("%Y%m%d")
 
+    # 장중(당일 데이터가 아직 하루치를 다 못 채운 경우) 경과 비율로 오늘 거래량을 보정해서
+    # "예상 하루 거래량"과 과거 평균을 비교한다. 장 마감 후에는 1.0이라 보정 없음.
+    trading_progress = _kr_trading_progress(date)
+    if trading_progress < 1.0:
+        logger.info(
+            "장중 데이터 감지 (경과 약 %.0f%%) - 상대거래량을 예상 하루 거래량 기준으로 보정합니다.",
+            trading_progress * 100,
+        )
+
     for i, ticker in enumerate(merged["ticker"], start=1):
         if i % 50 == 0:
             logger.info("국내 종목 상세 지표 수집 중... (%d/%d)", i, n_total)
@@ -117,7 +145,8 @@ def fetch_kr_stocks(
             if len(hist) >= 5:
                 avg20 = hist["거래량"].iloc[-21:-1].mean() if len(hist) > 1 else hist["거래량"].mean()
                 today_vol = hist["거래량"].iloc[-1]
-                rel_vols[ticker] = (today_vol / avg20) if avg20 else 1.0
+                today_vol_adjusted = today_vol / trading_progress
+                rel_vols[ticker] = (today_vol_adjusted / avg20) if avg20 else 1.0
             else:
                 rel_vols[ticker] = 1.0
 
@@ -186,8 +215,8 @@ def fetch_kr_stocks(
             "news_score": merged["news_score"],
             "news_tag": merged["news_tag"],
             "news_headline": merged["news_headline"],
-            "per": merged["PER"].replace(0, pd.NA),
-            "pbr": merged["PBR"].replace(0, pd.NA),
+            "per": merged["PER"].where(merged["PER"] != 0),
+            "pbr": merged["PBR"].where(merged["PBR"] != 0),
             "marketcap": merged["시가총액"],
         }
     )
