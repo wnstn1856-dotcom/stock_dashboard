@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>주식 스크리닝 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --border: #2a2e3a; --text: #e6e8ef;
+    --muted: #9aa1b2; --accent: #4f8cff; --good: #34c38f; --bad: #f0616d; --warn: #f4c95d;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  header { padding: 24px 32px; border-bottom: 1px solid var(--border); }
+  header h1 { margin:0 0 4px; font-size: 22px; }
+  header p { margin:0; color: var(--muted); font-size: 13px; }
+  .banner { background:#3a2f12; color:#f4c95d; padding:10px 32px; font-size:13px; border-bottom:1px solid var(--border); }
+  .container { padding: 24px 32px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap: wrap; }
+  .tab-btn { background: var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px; }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color:#fff; }
+  .card { background: var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns: 2.4fr 1fr; gap:20px; align-items:start; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align:left; }
+  th { color: var(--muted); font-weight:600; cursor:pointer; user-select:none; position: sticky; top:0; background: var(--panel); }
+  th:hover { color: var(--text); }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  .pos { color: var(--good); } .neg { color: var(--bad); }
+  .sub { color: var(--muted); font-size: 11px; display:block; }
+  .rsi-oversold { color: var(--good); font-weight:600; }
+  .rsi-overbought { color: var(--bad); font-weight:600; }
+  .filters { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center; }
+  select, input[type=text] { background:#11141c; border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px; }
+  .checkbox-label { display:flex; align-items:center; gap:5px; font-size:13px; color: var(--muted); cursor:pointer; user-select:none; }
+  .table-wrap { max-height: 640px; overflow:auto; }
+  .theme-item { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+  .disclaimer { color: var(--muted); font-size:12px; line-height:1.6; margin-top: 30px; padding-top:16px; border-top:1px solid var(--border); }
+  .badge { display:inline-block; padding:2px 7px; border-radius:5px; font-size:11px; margin:1px; white-space:nowrap; }
+  .badge-buy { background: rgba(52,195,143,0.15); color: var(--good); border:1px solid rgba(52,195,143,0.4); }
+  .badge-sell { background: rgba(240,97,109,0.15); color: var(--bad); border:1px solid rgba(240,97,109,0.4); }
+  .badge-oversold { background: rgba(52,195,143,0.12); color: var(--good); }
+  .badge-overbought { background: rgba(240,97,109,0.12); color: var(--bad); }
+  .badge-undervalued { background: rgba(79,140,255,0.12); color: var(--accent); }
+  .badge-volume { background: rgba(244,201,93,0.15); color: var(--warn); }
+  .badge-news-pos { background: rgba(52,195,143,0.12); color: var(--good); }
+  .badge-news-neg { background: rgba(240,97,109,0.12); color: var(--bad); }
+  .badge-news-neu { background: rgba(154,161,178,0.12); color: var(--muted); }
+  .news-cell { max-width: 220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 국내·해외 주식 스크리닝 대시보드</h1>
+  <p>생성 시각: 2026-07-09 01:47:51 · 데이터 기준: 무료 API 지연 시세 (실시간 아님, 재실행 시에만 갱신) · 총 35종목 분석</p>
+</header>
+<div class="banner">⚠️ 데이터 수집에 실패하여 샘플(데모) 데이터로 표시 중입니다. 인터넷 연결과 패키지 설치 상태를 확인한 뒤 다시 실행해주세요. (오류: 최근 영업일 데이터를 찾을 수 없습니다. (마지막 오류: "None of [Index(['종가', '시가총액', '거래량', '거래대금'], dtype='object')] are in the [columns]"))</div>
+<div class="container">
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="filters">
+        <select id="sectorFilter"><option value="">전체 업종/테마</option></select>
+        <input type="text" id="searchBox" placeholder="종목명 또는 코드 검색">
+        <label class="checkbox-label"><input type="checkbox" id="oversoldOnly"> 과매도만</label>
+        <label class="checkbox-label"><input type="checkbox" id="buySignalOnly"> 매수신호만</label>
+        <label class="checkbox-label"><input type="checkbox" id="sellSignalOnly"> 매도신호만</label>
+        <label class="checkbox-label"><input type="checkbox" id="newsPosOnly"> 뉴스호재만</label>
+      </div>
+      <div class="table-wrap">
+        <table id="stockTable">
+          <thead>
+            <tr>
+              <th data-key="name">종목</th>
+              <th data-key="ticker">코드</th>
+              <th data-key="sector">업종/테마</th>
+              <th data-key="price">현재가</th>
+              <th data-key="change_pct">등락률</th>
+              <th data-key="per">PER(업종평균)</th>
+              <th data-key="pbr">PBR</th>
+              <th data-key="rsi">RSI</th>
+              <th data-key="macd_hist">MACD</th>
+              <th data-key="rel_volume">상대거래량</th>
+              <th data-key="news_score">뉴스</th>
+              <th data-key="combined_score">종합점수</th>
+              <th data-key="signal_count">신호</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3 style="margin-top:0;">종합점수 Top 10</h3>
+        <canvas id="topChart" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0;">업종/테마별 평균 점수·PER Top 8</h3>
+        <div id="themeList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    ⚠️ 본 대시보드는 PER·PBR·RSI·MACD 등 공개 지표와, 뉴스 헤드라인에 대한 단순 키워드 매칭(진짜 AI 감성분석이
+    아님)을 기준으로 한 정량 스크리닝 결과이며, 투자 추천이나 매수·매도 자문이 아닙니다. "매수 신호"/"매도 신호"/
+    "과매도"/"호재" 등의 표시는 여러 규칙을 기계적으로 조합한 참고용 태그일 뿐, 실제 주가 방향을 보장하지
+    않습니다. 뉴스 스크래핑은 원 사이트(네이버 금융, 야후 파이낸스)의 페이지 구조에 의존하므로 일부 종목은
+    수집이 되지 않을 수 있습니다. 지표가 좋다고 해서 반드시 좋은 투자처는 아니며, 실제 투자 결정 전 반드시
+    최신 공시와 재무제표, 원문 뉴스를 직접 확인하시기 바랍니다. 시세는 실시간이 아닌 지연 시세이며, 스크립트를
+    재실행해야 데이터가 갱신됩니다.
+  </div>
+</div>
+
+<script>
+const DATA = {"KOSDAQ": [{"market": "KOSDAQ", "ticker": "196170", "name": "알테오젠", "sector": "바이오", "price": 295430.0, "change_pct": -5.63, "volume": 724483, "rel_volume": 1.36, "rsi": 70.7, "macd": 3.61, "macd_signal_line": 3.99, "macd_hist": -1.16, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 53.4, "pbr": 5.12, "marketcap": 77361213832269, "valuation_score": 85.7, "momentum_score": 85.7, "combined_score": 85.7, "sector_avg_per": 38.8, "sector_avg_pbr": 5.93, "per_vs_sector_pct": 37.6, "oversold": false, "overbought": true, "undervalued": true, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "293490", "name": "카카오게임즈", "sector": "게임", "price": 55226.0, "change_pct": -1.22, "volume": 1455733, "rel_volume": 0.41, "rsi": 59.6, "macd": -2.38, "macd_signal_line": 2.41, "macd_hist": 0.21, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": NaN, "pbr": 7.27, "marketcap": 272840585573840, "valuation_score": 75.0, "momentum_score": 85.7, "combined_score": 80.4, "sector_avg_per": 30.2, "sector_avg_pbr": 4.24, "per_vs_sector_pct": NaN, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "263750", "name": "펄어비스", "sector": "게임", "price": 337253.0, "change_pct": 0.87, "volume": 4665604, "rel_volume": 0.72, "rsi": 33.5, "macd": 3.9, "macd_signal_line": 2.42, "macd_hist": -1.38, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 42.2, "pbr": 4.24, "marketcap": 125635513909740, "valuation_score": 63.1, "momentum_score": 71.4, "combined_score": 67.3, "sector_avg_per": 30.2, "sector_avg_pbr": 4.24, "per_vs_sector_pct": 39.7, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 0, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "091990", "name": "셀트리온헬스케어", "sector": "바이오", "price": 164927.0, "change_pct": 4.03, "volume": 455461, "rel_volume": 1.82, "rsi": 84.7, "macd": -4.27, "macd_signal_line": -2.87, "macd_hist": -0.94, "macd_golden_cross": true, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 24.1, "pbr": 6.74, "marketcap": 351799608551176, "valuation_score": 76.2, "momentum_score": 50.0, "combined_score": 63.1, "sector_avg_per": 38.8, "sector_avg_pbr": 5.93, "per_vs_sector_pct": -37.9, "oversold": false, "overbought": true, "undervalued": true, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "247540", "name": "에코프로비엠", "sector": "2차전지", "price": 85850.0, "change_pct": -3.25, "volume": 4846675, "rel_volume": 2.2, "rsi": 67.4, "macd": -4.43, "macd_signal_line": 0.84, "macd_hist": 0.01, "macd_golden_cross": true, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 7.6, "pbr": 4.92, "marketcap": 337638755546684, "valuation_score": 36.9, "momentum_score": 57.1, "combined_score": 47.0, "sector_avg_per": 14.2, "sector_avg_pbr": 3.16, "per_vs_sector_pct": -46.5, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "086520", "name": "에코프로", "sector": "2차전지", "price": 207850.0, "change_pct": 7.07, "volume": 2891409, "rel_volume": 2.19, "rsi": NaN, "macd": -4.18, "macd_signal_line": 1.57, "macd_hist": 0.26, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 20.9, "pbr": 1.39, "marketcap": 322785844339941, "valuation_score": 39.3, "momentum_score": 35.7, "combined_score": 37.5, "sector_avg_per": 14.2, "sector_avg_pbr": 3.16, "per_vs_sector_pct": 47.2, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSDAQ", "ticker": "112040", "name": "위메이드", "sector": "게임", "price": 433657.0, "change_pct": 7.62, "volume": 4072781, "rel_volume": 3.13, "rsi": NaN, "macd": 2.37, "macd_signal_line": -1.68, "macd_hist": 1.72, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 18.2, "pbr": 1.22, "marketcap": 436096174774754, "valuation_score": 23.8, "momentum_score": 14.3, "combined_score": 19.0, "sector_avg_per": 30.2, "sector_avg_pbr": 4.24, "per_vs_sector_pct": -39.7, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}], "KOSPI": [{"market": "KOSPI", "ticker": "000270", "name": "기아", "sector": "자동차", "price": 114976.0, "change_pct": -5.88, "volume": 4684019, "rel_volume": 2.17, "rsi": 69.9, "macd": 3.07, "macd_signal_line": -3.1, "macd_hist": -1.61, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 44.6, "pbr": 7.88, "marketcap": 49299093788864, "valuation_score": 81.7, "momentum_score": 73.1, "combined_score": 77.4, "sector_avg_per": 48.3, "sector_avg_pbr": 7.88, "per_vs_sector_pct": -7.7, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "005380", "name": "현대차", "sector": "자동차", "price": 224669.0, "change_pct": 0.28, "volume": 692920, "rel_volume": 1.1, "rsi": 56.2, "macd": -2.7, "macd_signal_line": -2.8, "macd_hist": -1.72, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 52.0, "pbr": NaN, "marketcap": 119078516721060, "valuation_score": 75.0, "momentum_score": 61.5, "combined_score": 68.3, "sector_avg_per": 48.3, "sector_avg_pbr": 7.88, "per_vs_sector_pct": 7.7, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "051910", "name": "LG화학", "sector": "2차전지", "price": 122234.0, "change_pct": -7.49, "volume": 1645719, "rel_volume": 1.23, "rsi": 81.0, "macd": 3.76, "macd_signal_line": -1.85, "macd_hist": 0.62, "macd_golden_cross": false, "macd_dead_cross": true, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 18.1, "pbr": 4.67, "marketcap": 131444530100615, "valuation_score": 44.2, "momentum_score": 88.5, "combined_score": 66.3, "sector_avg_per": 32.2, "sector_avg_pbr": 4.62, "per_vs_sector_pct": -43.8, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 0, "buy_signal": false, "sell_signal_count": 3, "sell_signal": true}, {"market": "KOSPI", "ticker": "373220", "name": "LG에너지솔루션", "sector": "2차전지", "price": 343339.0, "change_pct": -6.17, "volume": 4435463, "rel_volume": 2.73, "rsi": 38.8, "macd": -2.06, "macd_signal_line": -3.42, "macd_hist": -1.99, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 46.4, "pbr": 1.21, "marketcap": 312687566763852, "valuation_score": 57.5, "momentum_score": 65.4, "combined_score": 61.4, "sector_avg_per": 32.2, "sector_avg_pbr": 4.62, "per_vs_sector_pct": 44.1, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSPI", "ticker": "005930", "name": "삼성전자", "sector": "반도체", "price": 22255.0, "change_pct": -3.6, "volume": 1193732, "rel_volume": 2.68, "rsi": 77.5, "macd": -4.13, "macd_signal_line": -0.78, "macd_hist": -1.88, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": NaN, "pbr": 5.34, "marketcap": 272516246153548, "valuation_score": 58.3, "momentum_score": 61.5, "combined_score": 59.9, "sector_avg_per": 22.6, "sector_avg_pbr": 3.04, "per_vs_sector_pct": NaN, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 2, "sell_signal": true}, {"market": "KOSPI", "ticker": "055550", "name": "신한지주", "sector": "금융", "price": 463920.0, "change_pct": 5.58, "volume": 914924, "rel_volume": 1.91, "rsi": 43.1, "macd": -4.41, "macd_signal_line": -1.21, "macd_hist": 1.94, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 27.1, "pbr": 7.97, "marketcap": 277928584870468, "valuation_score": 72.9, "momentum_score": 42.3, "combined_score": 57.6, "sector_avg_per": 17.8, "sector_avg_pbr": 6.24, "per_vs_sector_pct": 52.2, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "KOSPI", "ticker": "068270", "name": "셀트리온", "sector": "바이오", "price": 409851.0, "change_pct": 7.65, "volume": 2710260, "rel_volume": 0.79, "rsi": 81.3, "macd": -3.35, "macd_signal_line": 0.28, "macd_hist": 0.43, "macd_golden_cross": true, "macd_dead_cross": true, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 42.3, "pbr": 3.43, "marketcap": 335876311123177, "valuation_score": 55.8, "momentum_score": 53.8, "combined_score": 54.8, "sector_avg_per": 24.3, "sector_avg_pbr": 5.52, "per_vs_sector_pct": 74.1, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 2, "sell_signal": true}, {"market": "KOSPI", "ticker": "035720", "name": "카카오", "sector": "인터넷", "price": 89701.0, "change_pct": -2.32, "volume": 3383858, "rel_volume": 2.58, "rsi": 20.0, "macd": 1.35, "macd_signal_line": 0.34, "macd_hist": -1.02, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 42.2, "pbr": 2.86, "marketcap": 384179957438426, "valuation_score": 46.7, "momentum_score": 57.7, "combined_score": 52.2, "sector_avg_per": 42.2, "sector_avg_pbr": 2.01, "per_vs_sector_pct": 0.0, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "006400", "name": "삼성SDI", "sector": "2차전지", "price": 449933.0, "change_pct": -1.61, "volume": 1174671, "rel_volume": 3.49, "rsi": 21.4, "macd": -4.53, "macd_signal_line": -3.9, "macd_hist": 0.51, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": NaN, "pbr": 7.97, "marketcap": 264604261115058, "valuation_score": 72.9, "momentum_score": 26.9, "combined_score": 49.9, "sector_avg_per": 32.2, "sector_avg_pbr": 4.62, "per_vs_sector_pct": NaN, "oversold": true, "overbought": false, "undervalued": true, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 4, "buy_signal": true, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "105560", "name": "KB금융", "sector": "금융", "price": 366825.0, "change_pct": 4.81, "volume": 635418, "rel_volume": 0.99, "rsi": 24.8, "macd": -3.17, "macd_signal_line": -0.37, "macd_hist": 1.5, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 8.6, "pbr": 4.51, "marketcap": 7477452462175, "valuation_score": 35.0, "momentum_score": 57.7, "combined_score": 46.3, "sector_avg_per": 17.8, "sector_avg_pbr": 6.24, "per_vs_sector_pct": -51.7, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "000660", "name": "SK하이닉스", "sector": "반도체", "price": 230112.0, "change_pct": -3.55, "volume": 4359571, "rel_volume": 2.75, "rsi": 44.6, "macd": -2.22, "macd_signal_line": -2.85, "macd_hist": 1.05, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 22.6, "pbr": 0.73, "marketcap": 229766497347954, "valuation_score": 24.2, "momentum_score": 50.0, "combined_score": 37.1, "sector_avg_per": 22.6, "sector_avg_pbr": 3.04, "per_vs_sector_pct": 0.0, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "207940", "name": "삼성바이오로직스", "sector": "바이오", "price": 84891.0, "change_pct": 4.2, "volume": 2742957, "rel_volume": 2.81, "rsi": 15.0, "macd": -1.76, "macd_signal_line": -4.81, "macd_hist": 1.72, "macd_golden_cross": true, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 6.3, "pbr": 7.6, "marketcap": 42918160688732, "valuation_score": 42.5, "momentum_score": 26.9, "combined_score": 34.7, "sector_avg_per": 24.3, "sector_avg_pbr": 5.52, "per_vs_sector_pct": -74.1, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 0, "sell_signal": false}, {"market": "KOSPI", "ticker": "035420", "name": "NAVER", "sector": "인터넷", "price": 486827.0, "change_pct": -1.94, "volume": 2804999, "rel_volume": 2.97, "rsi": 75.3, "macd": 0.77, "macd_signal_line": 2.05, "macd_hist": -1.82, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": NaN, "pbr": 1.17, "marketcap": 139059004194735, "valuation_score": 33.3, "momentum_score": 34.6, "combined_score": 34.0, "sector_avg_per": 42.2, "sector_avg_pbr": 2.01, "per_vs_sector_pct": NaN, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 2, "sell_signal": true}], "US": [{"market": "US", "ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology", "price": 119.0, "change_pct": 5.07, "volume": 2355485, "rel_volume": 1.35, "rsi": 30.9, "macd": -4.76, "macd_signal_line": -3.07, "macd_hist": -0.69, "macd_golden_cross": true, "macd_dead_cross": true, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 39.6, "pbr": 7.86, "marketcap": 268154244666113, "valuation_score": 86.7, "momentum_score": 63.3, "combined_score": 75.0, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": 38.9, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 3, "buy_signal": true, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "GOOGL", "name": "Alphabet Inc.", "sector": "Communication", "price": 312.0, "change_pct": -3.18, "volume": 2784892, "rel_volume": 0.4, "rsi": 45.1, "macd": 0.8, "macd_signal_line": 1.55, "macd_hist": -0.14, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 54.4, "pbr": 1.69, "marketcap": 42489288808888, "valuation_score": 61.5, "momentum_score": 86.7, "combined_score": 74.1, "sector_avg_per": 41.7, "sector_avg_pbr": 3.58, "per_vs_sector_pct": 30.5, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": false, "signal_count": 0, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "US", "ticker": "NVDA", "name": "NVIDIA Corp.", "sector": "Technology", "price": 188.0, "change_pct": -6.88, "volume": 3354764, "rel_volume": 1.42, "rsi": 74.4, "macd": 2.2, "macd_signal_line": -2.0, "macd_hist": -0.76, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 10.3, "pbr": 7.55, "marketcap": 338691240841839, "valuation_score": 49.0, "momentum_score": 76.7, "combined_score": 62.8, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": -63.9, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": false, "signal_count": 0, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "PLTR", "name": "Palantir Technologies", "sector": "Technology", "price": 63.0, "change_pct": -7.59, "volume": 1628590, "rel_volume": 2.5, "rsi": 42.8, "macd": 2.15, "macd_signal_line": -4.24, "macd_hist": 0.76, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 51.5, "pbr": 1.32, "marketcap": 491923791322184, "valuation_score": 54.4, "momentum_score": 63.3, "combined_score": 58.8, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": 80.7, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "US", "ticker": "XOM", "name": "Exxon Mobil", "sector": "Energy", "price": 144.0, "change_pct": -0.23, "volume": 2005400, "rel_volume": 2.47, "rsi": 65.7, "macd": 3.41, "macd_signal_line": 4.2, "macd_hist": 1.92, "macd_golden_cross": false, "macd_dead_cross": true, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 40.8, "pbr": NaN, "marketcap": 214363523553581, "valuation_score": 65.0, "momentum_score": 50.0, "combined_score": 57.5, "sector_avg_per": 40.8, "sector_avg_pbr": NaN, "per_vs_sector_pct": 0.0, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "AMD", "name": "Advanced Micro Devices", "sector": "Technology", "price": 180.0, "change_pct": -1.15, "volume": 1915797, "rel_volume": 1.97, "rsi": 74.5, "macd": 3.22, "macd_signal_line": -3.94, "macd_hist": 1.84, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 27.8, "pbr": 7.74, "marketcap": 135114189954061, "valuation_score": 56.2, "momentum_score": 56.7, "combined_score": 56.4, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": -2.5, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 0, "buy_signal": false, "sell_signal_count": 2, "sell_signal": true}, {"market": "US", "ticker": "META", "name": "Meta Platforms", "sector": "Communication", "price": 331.0, "change_pct": -7.91, "volume": 3779725, "rel_volume": 2.79, "rsi": 44.8, "macd": -3.24, "macd_signal_line": 4.58, "macd_hist": 0.07, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 29.0, "pbr": 5.47, "marketcap": 493947437287917, "valuation_score": 47.9, "momentum_score": 60.0, "combined_score": 54.0, "sector_avg_per": 41.7, "sector_avg_pbr": 3.58, "per_vs_sector_pct": -30.5, "oversold": false, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "US", "ticker": "LLY", "name": "Eli Lilly", "sector": "Healthcare", "price": 453.0, "change_pct": 1.35, "volume": 3508062, "rel_volume": 3.06, "rsi": 41.6, "macd": -4.94, "macd_signal_line": -1.48, "macd_hist": 1.01, "macd_golden_cross": true, "macd_dead_cross": true, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 45.6, "pbr": 4.98, "marketcap": 110347293292477, "valuation_score": 74.1, "momentum_score": 33.3, "combined_score": 53.7, "sector_avg_per": 45.6, "sector_avg_pbr": 4.98, "per_vs_sector_pct": 0.0, "oversold": false, "overbought": false, "undervalued": true, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 4, "buy_signal": true, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "COIN", "name": "Coinbase Global", "sector": "Financials", "price": 238.0, "change_pct": 5.21, "volume": 3003125, "rel_volume": 1.4, "rsi": 80.4, "macd": -2.21, "macd_signal_line": -0.49, "macd_hist": 1.0, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 31.2, "pbr": 4.11, "marketcap": 177477000591430, "valuation_score": 43.1, "momentum_score": 53.3, "combined_score": 48.2, "sector_avg_per": 32.8, "sector_avg_pbr": 2.69, "per_vs_sector_pct": -4.9, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "JPM", "name": "JPMorgan Chase", "sector": "Financials", "price": 226.0, "change_pct": 3.42, "volume": 1249018, "rel_volume": 1.44, "rsi": 20.6, "macd": -3.49, "macd_signal_line": -1.17, "macd_hist": -1.39, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 0, "news_tag": "중립", "news_headline": "정기 주주총회 개최 공시", "per": 29.6, "pbr": NaN, "marketcap": 416462295553309, "valuation_score": 41.7, "momentum_score": 53.3, "combined_score": 47.5, "sector_avg_per": 32.8, "sector_avg_pbr": 2.69, "per_vs_sector_pct": -9.8, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "US", "ticker": "V", "name": "Visa Inc.", "sector": "Financials", "price": 380.0, "change_pct": 7.19, "volume": 1076867, "rel_volume": 0.46, "rsi": 23.8, "macd": 1.69, "macd_signal_line": 0.64, "macd_hist": -1.13, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 37.6, "pbr": 1.27, "marketcap": 409668657038111, "valuation_score": 33.8, "momentum_score": 56.7, "combined_score": 45.3, "sector_avg_per": 32.8, "sector_avg_pbr": 2.69, "per_vs_sector_pct": 14.6, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": false, "news_negative": true, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Discretionary", "price": 56.0, "change_pct": 7.23, "volume": 1250856, "rel_volume": 1.36, "rsi": 25.3, "macd": -4.54, "macd_signal_line": 4.84, "macd_hist": 0.45, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 35.8, "pbr": 3.32, "marketcap": 199886466151981, "valuation_score": 42.6, "momentum_score": 46.7, "combined_score": 44.6, "sector_avg_per": 37.6, "sector_avg_pbr": 3.84, "per_vs_sector_pct": -4.8, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 0, "sell_signal": false}, {"market": "US", "ticker": "TSLA", "name": "Tesla Inc.", "sector": "Consumer Discretionary", "price": 476.0, "change_pct": 6.26, "volume": 3101996, "rel_volume": 2.63, "rsi": 73.1, "macd": 0.48, "macd_signal_line": 3.97, "macd_hist": 0.97, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 39.3, "pbr": 4.36, "marketcap": 313411543647192, "valuation_score": 60.3, "momentum_score": 26.7, "combined_score": 43.5, "sector_avg_per": 37.6, "sector_avg_pbr": 3.84, "per_vs_sector_pct": 4.5, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": true, "news_positive": true, "news_negative": false, "signal_count": 2, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "AVGO", "name": "Broadcom Inc.", "sector": "Technology", "price": 99.0, "change_pct": -3.84, "volume": 1704028, "rel_volume": 1.81, "rsi": 76.6, "macd": -2.22, "macd_signal_line": 4.51, "macd_hist": -0.31, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": 1, "news_tag": "호재", "news_headline": "실적 호조, 목표주가 상향 조정", "per": 6.0, "pbr": 2.1, "marketcap": 34402323389339, "valuation_score": 18.7, "momentum_score": 66.7, "combined_score": 42.7, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": -78.9, "oversold": false, "overbought": true, "undervalued": false, "volume_surge": false, "news_positive": true, "news_negative": false, "signal_count": 1, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}, {"market": "US", "ticker": "MSFT", "name": "Microsoft Corp.", "sector": "Technology", "price": 67.0, "change_pct": 7.53, "volume": 974982, "rel_volume": 3.38, "rsi": 22.6, "macd": -0.65, "macd_signal_line": 2.29, "macd_hist": -0.75, "macd_golden_cross": false, "macd_dead_cross": false, "news_score": -1, "news_tag": "악재", "news_headline": "업황 부진 우려, 목표주가 하향", "per": 35.9, "pbr": 5.79, "marketcap": 945469981492, "valuation_score": 65.1, "momentum_score": 6.7, "combined_score": 35.9, "sector_avg_per": 28.5, "sector_avg_pbr": 5.39, "per_vs_sector_pct": 26.0, "oversold": true, "overbought": false, "undervalued": false, "volume_surge": true, "news_positive": false, "news_negative": true, "signal_count": 2, "buy_signal": false, "sell_signal_count": 1, "sell_signal": false}]};
+let currentMarket = Object.keys(DATA)[0];
+let sortKey = "combined_score";
+let sortAsc = false;
+let chart = null;
+
+function fmt(v, digits=2) {
+  if (v === null || v === undefined || Number.isNaN(v)) return "-";
+  return Number(v).toLocaleString("ko-KR", {maximumFractionDigits: digits});
+}
+
+function renderTabs() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  Object.keys(DATA).forEach(market => {
+    const btn = document.createElement("button");
+    btn.className = "tab-btn" + (market === currentMarket ? " active" : "");
+    btn.textContent = market + " (" + DATA[market].length + ")";
+    btn.onclick = () => { currentMarket = market; renderTabs(); populateSectorFilter(); renderAll(); };
+    tabs.appendChild(btn);
+  });
+}
+
+function populateSectorFilter() {
+  const sel = document.getElementById("sectorFilter");
+  const sectors = [...new Set(DATA[currentMarket].map(r => r.sector))].sort();
+  sel.innerHTML = '<option value="">전체 업종/테마</option>' + sectors.map(s => `<option value="${s}">${s}</option>`).join("");
+}
+
+function getFiltered() {
+  let rows = DATA[currentMarket];
+  const sector = document.getElementById("sectorFilter").value;
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  const oversoldOnly = document.getElementById("oversoldOnly").checked;
+  const buySignalOnly = document.getElementById("buySignalOnly").checked;
+  const sellSignalOnly = document.getElementById("sellSignalOnly").checked;
+  const newsPosOnly = document.getElementById("newsPosOnly").checked;
+  if (sector) rows = rows.filter(r => r.sector === sector);
+  if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || r.ticker.toLowerCase().includes(q));
+  if (oversoldOnly) rows = rows.filter(r => r.oversold);
+  if (buySignalOnly) rows = rows.filter(r => r.buy_signal);
+  if (sellSignalOnly) rows = rows.filter(r => r.sell_signal);
+  if (newsPosOnly) rows = rows.filter(r => r.news_positive);
+  rows = [...rows].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
+  return rows;
+}
+
+function rsiClass(rsi) {
+  if (rsi === null || rsi === undefined) return "";
+  if (rsi <= 30) return "rsi-oversold";
+  if (rsi >= 70) return "rsi-overbought";
+  return "";
+}
+
+function macdCell(r) {
+  const cls = (r.macd_hist ?? 0) >= 0 ? "pos" : "neg";
+  let tag = "";
+  if (r.macd_golden_cross) tag = ' <span class="sub" style="display:inline;color:var(--good)">골든</span>';
+  if (r.macd_dead_cross) tag = ' <span class="sub" style="display:inline;color:var(--bad)">데드</span>';
+  return `<span class="${cls}">${fmt(r.macd_hist)}</span>${tag}`;
+}
+
+function newsBadgeClass(tag) {
+  if (tag === "호재") return "badge-news-pos";
+  if (tag === "악재") return "badge-news-neg";
+  return "badge-news-neu";
+}
+
+function signalBadges(r) {
+  let badges = "";
+  if (r.buy_signal) badges += '<span class="badge badge-buy">매수신호</span>';
+  if (r.sell_signal) badges += '<span class="badge badge-sell">매도신호</span>';
+  if (r.oversold) badges += '<span class="badge badge-oversold">과매도</span>';
+  if (r.overbought) badges += '<span class="badge badge-overbought">과매수</span>';
+  if (r.undervalued) badges += '<span class="badge badge-undervalued">저평가</span>';
+  if (r.volume_surge) badges += '<span class="badge badge-volume">거래량급증</span>';
+  return badges || '<span class="sub">-</span>';
+}
+
+function renderTable() {
+  const rows = getFiltered();
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${r.ticker}</td>
+      <td>${r.sector}</td>
+      <td>${fmt(r.price, 0)}</td>
+      <td class="${r.change_pct >= 0 ? 'pos' : 'neg'}">${r.change_pct >= 0 ? '+' : ''}${fmt(r.change_pct)}%</td>
+      <td>${fmt(r.per)}<span class="sub">업종평균 ${fmt(r.sector_avg_per)}</span></td>
+      <td>${fmt(r.pbr)}</td>
+      <td class="${rsiClass(r.rsi)}">${fmt(r.rsi, 0)}</td>
+      <td>${macdCell(r)}</td>
+      <td>${fmt(r.rel_volume)}x</td>
+      <td class="news-cell" title="${(r.news_headline || '').replace(/"/g,'&quot;')}">
+        <span class="badge ${newsBadgeClass(r.news_tag)}">${r.news_tag || '중립'}</span>
+        ${r.news_headline ? '<span class="sub">' + r.news_headline + '</span>' : ''}
+      </td>
+      <td><b>${fmt(r.combined_score, 0)}</b></td>
+      <td>${signalBadges(r)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderChart() {
+  const top = [...DATA[currentMarket]].sort((a,b) => b.combined_score - a.combined_score).slice(0, 10);
+  const ctx = document.getElementById("topChart");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: top.map(r => r.name),
+      datasets: [{ label: "종합점수", data: top.map(r => r.combined_score), backgroundColor: "#4f8cff" }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { max: 100, ticks: { color: "#9aa1b2" }, grid: { color: "#2a2e3a" } },
+        y: { ticks: { color: "#e6e8ef" }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderThemes() {
+  const rows = DATA[currentMarket];
+  const bySector = {};
+  rows.forEach(r => {
+    if (!bySector[r.sector]) bySector[r.sector] = { scores: [], pers: [] };
+    bySector[r.sector].scores.push(r.combined_score);
+    if (r.per !== null && r.per !== undefined && r.per > 0) bySector[r.sector].pers.push(r.per);
+  });
+  const avgs = Object.entries(bySector)
+    .map(([sector, v]) => ({
+      sector,
+      avgScore: v.scores.reduce((a,b)=>a+b,0)/v.scores.length,
+      avgPer: v.pers.length ? v.pers.reduce((a,b)=>a+b,0)/v.pers.length : null,
+      n: v.scores.length
+    }))
+    .sort((a,b) => b.avgScore - a.avgScore)
+    .slice(0, 8);
+  document.getElementById("themeList").innerHTML = avgs.map(t => `
+    <div class="theme-item">
+      <span>${t.sector} <span style="color:var(--muted)">(${t.n})</span></span>
+      <span><b>${t.avgScore.toFixed(1)}점</b> <span class="sub" style="display:inline">PER ${t.avgPer ? t.avgPer.toFixed(1) : '-'}</span></span>
+    </div>
+  `).join("");
+}
+
+function renderAll() {
+  renderTable();
+  renderChart();
+  renderThemes();
+}
+
+document.querySelectorAll("#stockTable th").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = false; }
+    renderTable();
+  });
+});
+document.getElementById("sectorFilter").addEventListener("change", renderAll);
+document.getElementById("searchBox").addEventListener("input", renderTable);
+document.getElementById("oversoldOnly").addEventListener("change", renderTable);
+document.getElementById("buySignalOnly").addEventListener("change", renderTable);
+document.getElementById("sellSignalOnly").addEventListener("change", renderTable);
+document.getElementById("newsPosOnly").addEventListener("change", renderTable);
+
+renderTabs();
+populateSectorFilter();
+renderAll();
+</script>
+</body>
+</html>
